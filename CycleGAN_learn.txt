@@ -1,0 +1,320 @@
+CycleGAN
+code https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix
+paper https://arxiv.org/pdf/1703.10593.pdf
+website https://junyanz.github.io/CycleGAN/
+
+pix2pix
+https://github.com/phillipi/pix2pix
+
+
+.
+|-- LICENSE
+|-- README.md
+|-- data
+|   |-- __init__.py   # 用于CustomDatasetDataLoader，数据集加载基本没问题了
+|   |-- aligned_dataset.py   # 对图片左右切分成AB
+|   |-- base_data_loader.py  # 用于CustomDatasetDataLoader
+|   |-- base_dataset.py      #  __all__ = ['BaseDataset', 'get_transform']
+|   |-- image_folder.py      # __all__ = ['ImageFolder', 'make_dataset']
+|   |-- single_dataset.py    # 只取一张图片
+|   `-- unaligned_dataset.py # 不同的文件夹下取不同的图片
+|-- datasets  # 数据集及其下载
+|   |-- bibtex
+|   |   |-- cityscapes.tex
+|   |   |-- facades.tex
+|   |   |-- handbags.tex
+|   |   |-- shoes.tex
+|   |   `-- transattr.tex
+|   |-- combine_A_and_B.py
+|   |-- download_cyclegan_dataset.sh
+|   |-- download_pix2pix_dataset.sh
+|   |-- make_dataset_aligned.py
+|   `-- maps
+|-- docs  # 关于训练的一些信息说明
+|   |-- datasets.md
+|   |-- qa.md
+|   `-- tips.md
+|-- environment.yml
+|-- imgs   # 作者的样例
+|   |-- edges2cats.jpg
+|   `-- horse2zebra.gif
+|-- models  # 模型
+|   |-- __init__.py
+|   |-- base_model.py  # base_model中有很多函数，自己不清晰其具体作用和用法和用处，需要接着看，感觉更像是一个已经写好的框架，因为其内容不受任何网络的影响，和networks相辅相成，等完成之后需要再看看。
+|   |-- cycle_gan_model.py # 好吧，这个也没看懂
+|   |-- networks.py  #  __all__=['define_G', 'define_D','GANLoss']，但是对于其生成网络和判别网络还是不清晰，需要实际打印一下才能知道。
+|   |-- pix2pix_model.py
+|   `-- test_model.py
+|-- options    # 这个文件夹主要用于参数设置 args.
+|   |-- __init__.py
+|   |-- base_options.py
+|   |-- test_options.py
+|   `-- train_options.py
+|-- requirements.txt
+|-- scripts
+|   |-- conda_deps.sh
+|   |-- download_cyclegan_model.sh
+|   |-- download_pix2pix_model.sh
+|   |-- install_deps.sh
+|   |-- test_before_push.py
+|   |-- test_cyclegan.sh
+|   |-- test_pix2pix.sh
+|   |-- test_single.sh
+|   |-- train_cyclegan.sh
+|   `-- train_pix2pix.sh
+|-- test.py
+|-- train.py
+`-- util
+    |-- __init__.py
+    |-- get_data.py
+    |-- html.py
+    |-- image_pool.py
+    |-- util.py
+    `-- visualizer.py
+
+
+
+cycleGAN的train代码很简单，就是对于数据的处理和模型的定义，它用的调用好几层才可以完成其数据和模型的定义。
+因为直接看有些麻烦，所以，我重新实现一遍数据的处理和模型的定义，而对于超参数，则可以不管，对于训练代码，简单实现一下即可
+
+看了半天还是感觉看得晕晕乎乎的，还是跑一遍代码看看吧
+这我去，option就已经调用了models和data。这么牛啊
+
+
+类方法和静态方法的区别和使用
+https://www.cnblogs.com/elie/p/5876210.html
+
+函数也是一个类
+https://www.cnblogs.com/duex/p/6725694.html
+def __print_size_warning(ow, oh, w, h):
+    if not hasattr(__print_size_warning, 'has_printed'):
+        print("The image size needs to be a multiple of 4. "
+              "The loaded image size was (%d, %d), so it was adjusted to "
+              "(%d, %d). This adjustment will be done to all images "
+              "whose sizes are not multiples of 4" % (ow, oh, w, h))
+        __print_size_warning.has_printed = True
+
+****************************************************************************
+functools.partial
+偏函数
+https://www.cnblogs.com/Security-Darren/p/4168310.html
+****************************************************************************
+学习率下降法的几种展示
+https://blog.csdn.net/zxyhhjs2017/article/details/82383723
+****************************************************************************
+pytorch初始化model
+def init_weights(net, init_type='normal', gain=0.02):
+    def init_func(m):
+        classname = m.__class__.__name__
+        if hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
+            if init_type == 'normal':
+                init.normal_(m.weight.data, 0.0, gain)
+            elif init_type == 'xavier':
+                init.xavier_normal_(m.weight.data, gain=gain)
+            elif init_type == 'kaiming':
+                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+            elif init_type == 'orthogonal':
+                init.orthogonal_(m.weight.data, gain=gain)
+            else:
+                raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+            if hasattr(m, 'bias') and m.bias is not None:
+                init.constant_(m.bias.data, 0.0)
+        elif classname.find('BatchNorm2d') != -1:
+            init.normal_(m.weight.data, 1.0, gain)
+            init.constant_(m.bias.data, 0.0)
+
+    print('initialize network with %s' % init_type)
+    net.apply(init_func)
+https://www.cnblogs.com/lindaxin/p/8037561.html
+****************************************************************************
+多GPU训练 这一点之前没有遇到过，有待验证
+net.to(gpu_ids[0])
+net = torch.nn.DataParallel(net, gpu_ids)
+****************************************************************************
+argparse
+parser = argparse.ArgumentParser(
+	formatter_class=argparse.ArgumentDefaultsHelpFormatter))
+https://www.cnblogs.com/linxiyue/p/3908623.html
+opt, _ = parser.parse_known_args()
+https://blog.csdn.net/m0_37041325/article/details/77934623
+
+这里的参数不是一下子都放在options中，其参数分为基本参数，训练和测试参数，模型参数，数据参数，这个可以的分别是initialize，回头可以保存个框架，以后见了就认识了。modify_commandline_options
+****************************************************************************
+不理解为什么多个GPU的时候，也是放在第一个GPU上
+if len(opt.gpu_ids) > 0:
+    torch.cuda.set_device(opt.gpu_ids[0])
+****************************************************************************
+cyclegan在mode和data的方法类似，都是create+find，这种模式做个模板
+
+用于引进python包的一个方法，感觉和第六章见过的类似，对比一下。
+datasetlib = importlib.import_module(dataset_filename)
+
+# In the file, the class called DatasetNameDataset() will
+# be instantiated. It has to be a subclass of BaseDataset,
+# and it is case-insensitive.
+dataset = None
+target_dataset_name = dataset_name.replace('_', '') + 'dataset'
+for name, cls in datasetlib.__dict__.items():
+    if name.lower() == target_dataset_name.lower() \
+       and issubclass(cls, BaseDataset):
+        dataset = cls
+# UnalignedDataset': data.unaligned_dataset.UnalignedDataset}
+
+****************************************************************************
+itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()
+https://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/001415616001996f6b32d80b6454caca3d33c965a07611f000
+****************************************************************************
+可以尝试一下，看示例还是不错的
+python打印函数调用关系图
+https://www.cnblogs.com/GO-NO-1/p/7155684.html
+****************************************************************************
+
+cycleGAN的网络  256*256 9个block
+https://blog.csdn.net/c2a2o2/article/details/73338026
+ResnetGenerator(
+  (model): Sequential(
+    (0): ReflectionPad2d((3, 3, 3, 3))
+    (1): Conv2d(3, 64, kernel_size=(7, 7), stride=(1, 1))
+    (2): InstanceNorm2d(64, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (3): ReLU(inplace)
+    (4): Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+    (5): InstanceNorm2d(128, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (6): ReLU(inplace)
+    (7): Conv2d(128, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+    (8): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (9): ReLU(inplace)
+    (10): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (11): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (12): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (13): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (14): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (15): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (16): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (17): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (18): ResnetBlock(
+      (conv_block): Sequential(
+        (0): ReflectionPad2d((1, 1, 1, 1))
+        (1): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (2): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+        (3): ReLU(inplace)
+        (4): ReflectionPad2d((1, 1, 1, 1))
+        (5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1))
+        (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+      )
+    )
+    (19): ConvTranspose2d(256, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), output_padding=(1, 1))
+    (20): InstanceNorm2d(128, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (21): ReLU(inplace)
+    (22): ConvTranspose2d(128, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), output_padding=(1, 1))
+    (23): InstanceNorm2d(64, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (24): ReLU(inplace)
+    (25): ReflectionPad2d((3, 3, 3, 3))
+    (26): Conv2d(64, 3, kernel_size=(7, 7), stride=(1, 1))
+    (27): Tanh()
+  )
+)
+# 判别器
+print(net)
+1*3*256*256
+NLayerDiscriminator(
+  (model): Sequential(
+    (0): Conv2d(3, 64, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+    (1): LeakyReLU(negative_slope=0.2, inplace)
+    (2): Conv2d(64, 128, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+    (3): InstanceNorm2d(128, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (4): LeakyReLU(negative_slope=0.2, inplace)
+    (5): Conv2d(128, 256, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+    (6): InstanceNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (7): LeakyReLU(negative_slope=0.2, inplace)
+    (8): Conv2d(256, 512, kernel_size=(4, 4), stride=(1, 1), padding=(1, 1))
+    (9): InstanceNorm2d(512, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+    (10): LeakyReLU(negative_slope=0.2, inplace)
+    (11): Conv2d(512, 1, kernel_size=(4, 4), stride=(1, 1), padding=(1, 1))
+  )
+)
+1*1*30*30
+
+2018-10-31
+现在cycleGAN基本都清楚了，还缺一个计算loss的时候，分别是多大，对这个挺感兴趣的。
+对于Idtloss还有疑问，不是很懂其为什么这么做，初步猜测是为了保证domain B的通过G_A还是domain B的，domain A通过G_A也是domain B的，论文5.2与猜想一致
+Image_pool的作用，按照github上作者的说法，是为了记忆历史信息，有paper参考，暂且跳过去。
